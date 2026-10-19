@@ -6,12 +6,12 @@ on:
       action_type:
         description: 'Chọn tác vụ muốn thực hiện'
         required: true
-        default: 'deploy'
+        default: 'deploy_run'
         type: choice
         options:
-          - build_image      # 1. Chỉ build và đẩy custom image lên Artifact Registry
-          - deploy_run       # 2. Chỉ deploy image mới lên Cloud Run (GPU L4)
-          - warmup_run       # 3. Kích hoạt Cloud Run dậy (Warm-up)
+          - build_image      # 1. Đóng gói custom image và đẩy lên Artifact Registry
+          - deploy_run       # 2. Triển khai image mới nhất lên Cloud Run (GPU L4)
+          - warmup_run       # 3. Kích hoạt đánh thức Cloud Run (Warm-up)
 
 env:
   REGION: 'us-central1'
@@ -20,7 +20,7 @@ env:
 
 jobs:
   run-cloud-build:
-    runs-on: ubuntu-latest # Hoặc [self-hosted] nếu dùng máy chủ riêng của bạn
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
@@ -34,23 +34,79 @@ jobs:
       - name: Thiết lập Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # --- LỰA CHỌN 1: ĐÓNG GÓI CUSTOM IMAGE ---
+      # ==========================================================
+      # HÀNH ĐỘNG 1: BUILD IMAGE
+      # ==========================================================
       - name: Thực thi Cloud Build (Build Image)
         if: ${{ github.event.inputs.action_type == 'build_image' }}
         run: |
-          gcloud builds submit --config cloudbuild-build.yaml \
-            --substitutions=_REGION=${{ env.REGION }},_REPO_NAME=${{ env.REPO_NAME }} .
+          gcloud builds submit --config - . << 'EOF'
+          steps:
+            - name: 'gcr.io/cloud-builders/docker'
+              args: [
+                'build',
+                '-t', '${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPO_NAME }}/custom-llm-service:latest',
+                '.'
+              ]
+            - name: 'gcr.io/cloud-builders/docker'
+              args: ['push', '${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPO_NAME }}/custom-llm-service:latest']
+          options:
+            machineType: 'E2_HIGHCPU_8'
+          EOF
 
-      # --- LỰA CHỌN 2: DEPLOY LÊN CLOUD RUN ---
+      # ==========================================================
+      # HÀNH ĐỘNG 2: DEPLOY CLOUD RUN
+      # ==========================================================
       - name: Thực thi Cloud Build (Deploy Cloud Run)
         if: ${{ github.event.inputs.action_type == 'deploy_run' }}
         run: |
-          gcloud builds submit --config cloudbuild-deploy.yaml \
-            --substitutions=_REGION=${{ env.REGION }},_REPO_NAME=${{ env.REPO_NAME }},_SERVICE_NAME=${{ env.SERVICE_NAME }},_HF_TOKEN=${{ secrets.HF_TOKEN }} .
+          gcloud builds submit --config - . << 'EOF'
+          steps:
+            - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+              entrypoint: gcloud
+              args:
+                - 'beta'
+                - 'run'
+                - 'deploy'
+                - '${{ env.SERVICE_NAME }}'
+                - '--image=${{ env.REGION }}-docker.pkg.dev/$PROJECT_ID/${{ env.REPO_NAME }}/custom-llm-service:latest'
+                - '--region=${{ env.REGION }}'
+                - '--platform=managed'
+                - '--cpu=8'
+                - '--memory=32Gi'
+                - '--gpu=1'
+                - '--gpu-type=nvidia-l4'
+                - '--no-gpu-zonal-redundancy'
+                - '--port=8000'
+                - '--no-cpu-throttling'
+                - '--min-instances=0'
+                - '--max-instances=2'
+                - '--timeout=3600'
+                - '--set-env-vars=HF_TOKEN=${_HF_TOKEN}'
+                - '--no-allow-unauthenticated'
+          substitutions:
+            _HF_TOKEN: '${{ secrets.HF_TOKEN }}'
+          options:
+            machineType: 'E2_MEDIUM'
+          EOF
 
-      # --- LỰA CHỌN 3: WARM-UP HỆ THỐNG ---
+      # ==========================================================
+      # HÀNH ĐỘNG 3: WARM-UP HỆ THỐNG
+      # ==========================================================
       - name: Thực thi Cloud Build (Warm-up)
         if: ${{ github.event.inputs.action_type == 'warmup_run' }}
         run: |
-          gcloud builds submit --config cloudbuild-warmup.yaml \
-            --substitutions=_REGION=${{ env.REGION }},_SERVICE_NAME=${{ env.SERVICE_NAME }} .
+          gcloud builds submit --config - . << 'EOF'
+          steps:
+            - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+              entrypoint: 'bash'
+              args:
+                - '-c'
+                - |
+                  SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --format='value(status.url)')
+                  TOKEN=$(gcloud auth print-identity-token)
+                  curl -X POST "${SERVICE_URL}/v1/chat/completions" \
+                    -H "Authorization: Bearer ${TOKEN}" \
+                    -H "Content-Type: application/json" \
+                    -d '{"model": "Qwen/Qwen2.5-14B-Instruct-AWQ", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5}'
+          EOF
