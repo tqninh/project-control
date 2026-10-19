@@ -4,25 +4,9 @@ steps:
     args:
       - '-c'
       - |
-        echo "Bắt đầu quá trình Warm-up Cloud Run..."
-        # Lấy URL của Cloud Run service
-        SERVICE_URL=$(gcloud run services describe ${_SERVICE_NAME} --region=${_REGION} --format='value(status.url)')
-        echo "Endpoint URL: $SERVICE_URL"
-
-        # Lấy Google Identity Token để xác thực
+        SERVICE_URL=$(gcloud run services describe local-llm-service --region=us-central1 --format='value(status.url)')
         TOKEN=$(gcloud auth print-identity-token)
-
-        # Gửi request nhẹ nhàng để kích hoạt container thức dậy và load model vào VRAM
         curl -X POST "${SERVICE_URL}/v1/chat/completions" \
           -H "Authorization: Bearer ${TOKEN}" \
           -H "Content-Type: application/json" \
-          -d '{
-            "model": "Qwen/Qwen2.5-14B-Instruct-AWQ",
-            "messages": [{"role": "user", "content": "ping"}],
-            "max_tokens": 5
-          }'
-        echo -hr "Đã gửi tín hiệu Warm-up thành công!"
-
-substitutions:
-  _REGION: 'us-central1'
-  _SERVICE_NAME: 'local-llm-service'
+          -d '{"model": "Qwen/Qwen2.5-14B-Instruct-AWQ", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5}'
