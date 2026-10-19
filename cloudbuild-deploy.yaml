@@ -5,9 +5,9 @@ steps:
       - 'beta'
       - 'run'
       - 'deploy'
-      - '${_SERVICE_NAME}'
-      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/custom-llm-service:latest'
-      - '--region=${_REGION}'
+      - 'local-llm-service'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/llm-repo/custom-llm-service:latest'
+      - '--region=us-central1'
       - '--platform=managed'
       - '--cpu=8'
       - '--memory=32Gi'
@@ -21,12 +21,7 @@ steps:
       - '--timeout=3600'
       - '--set-env-vars=HF_TOKEN=${_HF_TOKEN}'
       - '--no-allow-unauthenticated'
-
 substitutions:
-  _REGION: 'us-central1'
-  _REPO_NAME: 'llm-repo'
-  _SERVICE_NAME: 'local-llm-service'
   _HF_TOKEN: ''
-
 options:
   machineType: 'E2_MEDIUM'
