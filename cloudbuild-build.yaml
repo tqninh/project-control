@@ -1,0 +1,18 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/custom-llm-service:${_TAG}',
+      '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/custom-llm-service:latest',
+      '.'
+    ]
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/custom-llm-service']
+
+substitutions:
+  _REGION: 'us-central1'
+  _REPO_NAME: 'llm-repo'
+  _TAG: 'latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8' # Dùng máy cấu hình cao để build nhanh
