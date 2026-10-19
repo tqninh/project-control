@@ -1,0 +1,56 @@
+name: LLM Infrastructure Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      action_type:
+        description: 'Chọn tác vụ muốn thực hiện'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - build_image      # 1. Chỉ build và đẩy custom image lên Artifact Registry
+          - deploy_run       # 2. Chỉ deploy image mới lên Cloud Run (GPU L4)
+          - warmup_run       # 3. Kích hoạt Cloud Run dậy (Warm-up)
+
+env:
+  REGION: 'us-central1'
+  REPO_NAME: 'llm-repo'
+  SERVICE_NAME: 'local-llm-service'
+
+jobs:
+  run-cloud-build:
+    runs-on: ubuntu-latest # Hoặc [self-hosted] nếu dùng máy chủ riêng của bạn
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Xác thực Google Cloud từ GitHub
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: Thiết lập Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # --- LỰA CHỌN 1: ĐÓNG GÓI CUSTOM IMAGE ---
+      - name: Thực thi Cloud Build (Build Image)
+        if: ${{ github.event.inputs.action_type == 'build_image' }}
+        run: |
+          gcloud builds submit --config cloudbuild-build.yaml \
+            --substitutions=_REGION=${{ env.REGION }},_REPO_NAME=${{ env.REPO_NAME }} .
+
+      # --- LỰA CHỌN 2: DEPLOY LÊN CLOUD RUN ---
+      - name: Thực thi Cloud Build (Deploy Cloud Run)
+        if: ${{ github.event.inputs.action_type == 'deploy_run' }}
+        run: |
+          gcloud builds submit --config cloudbuild-deploy.yaml \
+            --substitutions=_REGION=${{ env.REGION }},_REPO_NAME=${{ env.REPO_NAME }},_SERVICE_NAME=${{ env.SERVICE_NAME }},_HF_TOKEN=${{ secrets.HF_TOKEN }} .
+
+      # --- LỰA CHỌN 3: WARM-UP HỆ THỐNG ---
+      - name: Thực thi Cloud Build (Warm-up)
+        if: ${{ github.event.inputs.action_type == 'warmup_run' }}
+        run: |
+          gcloud builds submit --config cloudbuild-warmup.yaml \
+            --substitutions=_REGION=${{ env.REGION }},_SERVICE_NAME=${{ env.SERVICE_NAME }} .
