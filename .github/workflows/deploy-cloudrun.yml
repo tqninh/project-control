@@ -30,15 +30,20 @@ jobs:
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    - name: Deploy to Cloud Run via Compose
+    - name: Deploy to Cloud Run with GPU and GCS Bucket
       run: |
-        gcloud run compose up \
-          --file=compose.yaml \
+        gcloud run deploy vllm-qwen-server \
+          --image=vllm/vllm-openai:v0.8.2 \
           --region=us-central1 \
-          --gpu=1 \
-          --gpu-type=nvidia-l4 \
-          --add-volume=name=model-volume,type=cloud-storage,bucket=my-llm-model-bucket,mount-path=/model-cache \
           --cpu=4 \
           --memory=16Gi \
+          --gpu=1 \
+          --gpu-type=nvidia-l4 \
+          --port=8080 \
           --min-instances=0 \
-          --max-instances=1
+          --max-instances=1 \
+          --set-env-vars=HF_HUB_OFFLINE=1 \
+          --args="--model=/model-cache/Qwen2.5-14B-Instruct-AWQ","--quantization=awq","--port=8080","--max-model-len=4096","--gpu-memory-utilization=0.90" \
+          --add-volume=name=model-volume,type=cloud-storage,bucket=my-llm-model-bucket \
+          --add-volume-mount=volume=model-volume,mount-path=/model-cache \
+          --allow-unauthenticated
