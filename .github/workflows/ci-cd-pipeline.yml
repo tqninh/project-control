@@ -13,6 +13,11 @@ on:
           - deploy_run       # 2. Triển khai lên Cloud Run (Dùng nếu có quota Cloud Run)
           - deploy_gce       # 3. Triển khai lên Google Compute Engine (GPU L4 VM)
           - warmup_run       # 4. Kích hoạt đánh thức hệ thống
+      zone:
+        description: 'Google Cloud Zone (Để trống sẽ dùng mặc định: us-central1-a)'
+        required: false
+        default: 'us-central1-a'
+        type: string
 
 jobs:
   run-cloud-build:
