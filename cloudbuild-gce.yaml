@@ -29,18 +29,17 @@ steps:
             - docker run -d --restart=always --name=llm-service --gpus all -p 8000:8000 -e HF_TOKEN=${_HF_TOKEN} $${IMAGE_URI}
           "
 
-          gcloud compute instances create "$${INSTANCE_NAME}" \
-            --zone="$${ZONE}" \
-            --machine-type=g2-standard-8 \
+gcloud compute instances create "${INSTANCE_NAME}" \
+            --zone="${ZONE}" \
+            --machine-type=n1-standard-8 \
             --maintenance-policy=TERMINATE \
-            --accelerator=type=nvidia-l4,count=1 \
+            --accelerator=type=nvidia-tesla-t4,count=1 \
             --boot-disk-size=100GB \
             --image-project=cos-cloud \
             --image-family=cos-stable \
-            --metadata="user-data=$${CLOUD_INIT_CONFIG}" \
+            --metadata="user-data=${CLOUD_INIT_CONFIG}" \
             --tags=allow-llm-api \
             --scopes=https://www.googleapis.com/auth/cloud-platform
-        fi
 
 substitutions:
   _INSTANCE_NAME: 'local-llm-vm'
