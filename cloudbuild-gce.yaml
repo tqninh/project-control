@@ -9,10 +9,10 @@ steps:
         IMAGE_URI="us-central1-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/custom-llm-service:latest"
 
         echo "Kiểm tra xem VM ${INSTANCE_NAME} đã tồn tại chưa..."
-        if gcloud compute instances describe "${INSTANCE_NAME}" --zone="${ZONE}" >/dev/null 2>&1; then
+        if gcloud compute instances describe "$${INSTANCE_NAME}" --zone="${ZONE}" >/dev/null 2>&1; then
           echo "VM đã tồn tại. Đang tiến hành cập nhật Container Image trên VM..."
           # Trên COS chuẩn mới, ta cập nhật container bằng cách ssh hoặc restart lại lệnh docker run qua metadata/SSH
-          gcloud compute instances ssh "${INSTANCE_NAME}" --zone="${ZONE}" --command="
+          gcloud compute instances ssh "$${INSTANCE_NAME}" --zone="${ZONE}" --command="
             sudo docker stop llm-service || true
             sudo docker rm llm-service || true
             sudo docker pull ${IMAGE_URI}
