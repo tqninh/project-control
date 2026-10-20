@@ -26,7 +26,7 @@ steps:
 
           runcmd:
             - echo 'Đang khởi động Docker container cho vLLM...'
-            - docker run -d --restart=always --name=llm-service --gpus all -p 8000:8000 -e HF_TOKEN=${_HF_TOKEN} ${IMAGE_URI}
+            - docker run -d --restart=always --name=llm-service --gpus all -p 8000:8000 -e HF_TOKEN=${_HF_TOKEN} $${IMAGE_URI}
           "
 
           gcloud compute instances create "$${INSTANCE_NAME}" \
