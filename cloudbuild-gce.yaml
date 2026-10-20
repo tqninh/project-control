@@ -29,7 +29,7 @@ steps:
             - docker run -d --restart=always --name=llm-service --gpus all -p 8000:8000 -e HF_TOKEN=${_HF_TOKEN} ${IMAGE_URI}
           "
 
-          gcloud compute instances create "${INSTANCE_NAME}" \
+          gcloud compute instances create "$${INSTANCE_NAME}" \
             --zone="${ZONE}" \
             --machine-type=g2-standard-8 \
             --maintenance-policy=TERMINATE \
@@ -37,7 +37,7 @@ steps:
             --boot-disk-size=100GB \
             --image-project=cos-cloud \
             --image-family=cos-stable \
-            --metadata="user-data=${CLOUD_INIT_CONFIG}" \
+            --metadata="user-data=$${CLOUD_INIT_CONFIG}" \
             --tags=allow-llm-api \
             --scopes=https://www.googleapis.com/auth/cloud-platform
         fi
