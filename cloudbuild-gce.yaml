@@ -8,15 +8,15 @@ steps:
         ZONE="${_ZONE}"
         IMAGE_URI="us-central1-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/custom-llm-service:latest"
 
-        echo "Kiểm tra xem VM ${INSTANCE_NAME} đã tồn tại chưa..."
-        if gcloud compute instances describe "$${INSTANCE_NAME}" --zone="${ZONE}" >/dev/null 2>&1; then
+        echo "Kiểm tra xem VM $${INSTANCE_NAME} đã tồn tại chưa..."
+        if gcloud compute instances describe "$${INSTANCE_NAME}" --zone="$${ZONE}" >/dev/null 2>&1; then
           echo "VM đã tồn tại. Đang tiến hành cập nhật Container Image trên VM..."
           # Trên COS chuẩn mới, ta cập nhật container bằng cách ssh hoặc restart lại lệnh docker run qua metadata/SSH
-          gcloud compute instances ssh "$${INSTANCE_NAME}" --zone="${ZONE}" --command="
+          gcloud compute instances ssh "$${INSTANCE_NAME}" --zone="$${ZONE}" --command="
             sudo docker stop llm-service || true
             sudo docker rm llm-service || true
-            sudo docker pull ${IMAGE_URI}
-            sudo docker run -d --restart=always --name=llm-service --gpus all -p 8000:8000 -e HF_TOKEN=${_HF_TOKEN} ${IMAGE_URI}
+            sudo docker pull $${IMAGE_URI}
+            sudo docker run -d --restart=always --name=llm-service --gpus all -p 8000:8000 -e HF_TOKEN=${_HF_TOKEN} $${IMAGE_URI}
           "
         else
           echo "VM chưa tồn tại. Đang khởi tạo mới máy ảo kèm GPU L4 chuẩn cloud-init..."
@@ -30,7 +30,7 @@ steps:
           "
 
           gcloud compute instances create "$${INSTANCE_NAME}" \
-            --zone="${ZONE}" \
+            --zone="$${ZONE}" \
             --machine-type=g2-standard-8 \
             --maintenance-policy=TERMINATE \
             --accelerator=type=nvidia-l4,count=1 \
