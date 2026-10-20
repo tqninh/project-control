@@ -5,9 +5,9 @@ steps:
     args:
       - '-c'
       - |
-        INSTANCE_NAME="local-llm-vm"
-        ZONE="us-central1-a"
-        IMAGE_URI="us-central1-docker.pkg.dev/$PROJECT_ID/llm-repo/custom-llm-service:latest"
+        INSTANCE_NAME="${_INSTANCE_NAME}"
+        ZONE="${_ZONE}"
+        IMAGE_URI="us-central1-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/custom-llm-service:latest"
 
         echo "Kiểm tra xem VM ${INSTANCE_NAME} đã tồn tại chưa..."
         if gcloud compute instances describe ${INSTANCE_NAME} --zone=${ZONE} >/dev/null 2>&1; then
@@ -33,6 +33,9 @@ steps:
         fi
 
 substitutions:
+  _INSTANCE_NAME: 'local-llm-vm'
+  _ZONE: 'us-central1-a'
+  _REPO_NAME: 'llm-repo'
   _HF_TOKEN: ''
 
 options:
