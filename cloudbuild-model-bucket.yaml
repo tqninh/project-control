@@ -1,0 +1,86 @@
+steps:
+  # Ensure the bucket exists, then decide whether a download is needed.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        BUCKET="${_MODEL_BUCKET}"
+        MODEL_PREFIX="qwen2.5-14b-instruct"
+
+        if ! gcloud storage buckets describe "gs://$${BUCKET}" >/dev/null 2>&1; then
+          echo "Creating GCS bucket gs://$${BUCKET} in us-central1"
+          gcloud storage buckets create "gs://$${BUCKET}" \
+            --location=us-central1 \
+            --uniform-bucket-level-access
+        fi
+
+        if gcloud storage ls "gs://$${BUCKET}/$${MODEL_PREFIX}/_READY" >/dev/null 2>&1; then
+          echo "A completed model cache already exists; skip Hugging Face download."
+          echo "skip" > /workspace/model_action
+        else
+          echo "No completion marker found; model will be downloaded."
+          echo "download" > /workspace/model_action
+        fi
+
+  # Download all three Q4_K_M GGUF shards. This is a public Hugging Face repository.
+  - name: 'python:3.12-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ "$(cat /workspace/model_action)" != "download" ]; then
+          echo "Download skipped."
+          exit 0
+        fi
+
+        python -m pip install --no-cache-dir --upgrade huggingface_hub
+        mkdir -p /workspace/model
+        hf download Qwen/Qwen2.5-14B-Instruct-GGUF \
+          --include 'qwen2.5-14b-instruct-q4_k_m-*.gguf' \
+          --local-dir /workspace/model
+
+        for shard in \
+          qwen2.5-14b-instruct-q4_k_m-00001-of-00003.gguf \
+          qwen2.5-14b-instruct-q4_k_m-00002-of-00003.gguf \
+          qwen2.5-14b-instruct-q4_k_m-00003-of-00003.gguf; do
+          test -s "/workspace/model/$${shard}" || {
+            echo "Missing or empty shard: $${shard}" >&2
+            exit 1
+          }
+        done
+
+  # Upload shards first; publish _READY only after every upload succeeds.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ "$(cat /workspace/model_action)" != "download" ]; then
+          echo "Upload skipped; cache is already complete."
+          exit 0
+        fi
+
+        BUCKET="${_MODEL_BUCKET}"
+        MODEL_PREFIX="qwen2.5-14b-instruct"
+        DEST="gs://$${BUCKET}/$${MODEL_PREFIX}"
+
+        gcloud storage cp /workspace/model/qwen2.5-14b-instruct-q4_k_m-00001-of-00003.gguf "$${DEST}/"
+        gcloud storage cp /workspace/model/qwen2.5-14b-instruct-q4_k_m-00002-of-00003.gguf "$${DEST}/"
+        gcloud storage cp /workspace/model/qwen2.5-14b-instruct-q4_k_m-00003-of-00003.gguf "$${DEST}/"
+
+        printf 'repo=Qwen/Qwen2.5-14B-Instruct-GGUF\nquantization=Q4_K_M\ncompleted_at=%s\n' "$(date -u +%FT%TZ)" > /workspace/model/_READY
+        gcloud storage cp /workspace/model/_READY "$${DEST}/_READY"
+        echo "Model cache is ready at $${DEST}"
+
+substitutions:
+  _MODEL_BUCKET: 'lively-guard-512108-f4-llm-models'
+
+options:
+  machineType: 'E2_MEDIUM'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 7200s
