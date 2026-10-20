@@ -6,12 +6,13 @@ on:
       action_type:
         description: 'Chọn tác vụ muốn thực hiện'
         required: true
-        default: 'deploy_run'
+        default: 'deploy_gce'
         type: choice
         options:
           - build_image      # 1. Đóng gói custom image và đẩy lên Artifact Registry
-          - deploy_run       # 2. Triển khai image mới nhất lên Cloud Run (GPU L4)
-          - warmup_run       # 3. Kích hoạt đánh thức Cloud Run (Warm-up)
+          - deploy_run       # 2. Triển khai lên Cloud Run (Dùng nếu có quota Cloud Run)
+          - deploy_gce       # 3. Triển khai lên Google Compute Engine (GPU L4 VM)
+          - warmup_run       # 4. Kích hoạt đánh thức hệ thống
 
 jobs:
   run-cloud-build:
@@ -47,7 +48,16 @@ jobs:
             --substitutions=_HF_TOKEN=${{ secrets.HF_TOKEN }} .
 
       # ==========================================================
-      # HÀNH ĐỘNG 3: WARM-UP HỆ THỐNG
+      # HÀNH ĐỘNG 3: DEPLOY COMPUTE ENGINE (GCE)
+      # ==========================================================
+      - name: Thực thi Cloud Build (Deploy Compute Engine GPU)
+        if: ${{ github.event.inputs.action_type == 'deploy_gce' }}
+        run: |
+          gcloud builds submit --config cloudbuild-gce.yaml \
+            --substitutions=_HF_TOKEN=${{ secrets.HF_TOKEN }} .
+
+      # ==========================================================
+      # HÀNH ĐỘNG 4: WARM-UP HỆ THỐNG
       # ==========================================================
       - name: Thực thi Cloud Build (Warm-up)
         if: ${{ github.event.inputs.action_type == 'warmup_run' }}
