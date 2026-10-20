@@ -17,7 +17,7 @@ steps:
       - '--port=8000'
       - '--no-cpu-throttling'
       - '--min-instances=0'
-      - '--max-instances=2'
+      - '--max-instances=1'
       - '--timeout=3600'
       - '--set-env-vars=HF_TOKEN=${_HF_TOKEN}'
       - '--no-allow-unauthenticated'
