@@ -13,7 +13,8 @@ steps:
       - '--memory=32Gi'
       - '--gpu=1'
       - '--gpu-type=nvidia-l4'
-      - '--no-gpu-zonal-redundancy'
+      # Specific quota required
+      # - '--no-gpu-zonal-redundancy'
       - '--port=8000'
       - '--no-cpu-throttling'
       - '--min-instances=0'
