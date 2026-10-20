@@ -1,0 +1,39 @@
+steps:
+  # Bước: Triển khai hoặc cập nhật Compute Engine VM kèm GPU NVIDIA L4 chạy Docker Container
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        INSTANCE_NAME="local-llm-vm"
+        ZONE="us-central1-a"
+        IMAGE_URI="us-central1-docker.pkg.dev/$PROJECT_ID/llm-repo/custom-llm-service:latest"
+
+        echo "Kiểm tra xem VM ${INSTANCE_NAME} đã tồn tại chưa..."
+        if gcloud compute instances describe ${INSTANCE_NAME} --zone=${ZONE} >/dev/null 2>&1; then
+          echo "VM đã tồn tại. Đang tiến hành cập nhật Container Image..."
+          gcloud compute instances update-container ${INSTANCE_NAME} \
+            --zone=${ZONE} \
+            --container-image=${IMAGE_URI}
+        else
+          echo "VM chưa tồn tại. Đang khởi tạo mới máy ảo kèm GPU L4..."
+          gcloud compute instances create-with-container ${INSTANCE_NAME} \
+            --zone=${ZONE} \
+            --machine-type=g2-standard-8 \
+            --maintenance-policy=TERMINATE \
+            --accelerator=type=nvidia-l4,count=1 \
+            --boot-disk-size=100GB \
+            --image-project=cos-cloud \
+            --image-family=cos-113-lts \
+            --container-image=${IMAGE_URI} \
+            --container-env=HF_TOKEN=${_HF_TOKEN} \
+            --container-restart-policy=always \
+            --tags=allow-llm-api \
+            --scopes=https://www.googleapis.com/auth/cloud-platform
+        fi
+
+substitutions:
+  _HF_TOKEN: ''
+
+options:
+  machineType: 'E2_MEDIUM'
