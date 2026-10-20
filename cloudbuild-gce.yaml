@@ -36,7 +36,7 @@ substitutions:
   _INSTANCE_NAME: 'local-llm-vm'
   _ZONE: 'us-central1-a'
   _REPO_NAME: 'llm-repo'
-  _HF_TOKEN: ''
+  _HF_TOKEN: ${HF_TOKEN}
 
 options:
   machineType: 'E2_MEDIUM'
