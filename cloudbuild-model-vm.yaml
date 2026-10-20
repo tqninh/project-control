@@ -1,0 +1,141 @@
+steps:
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+
+        ZONE="${_ZONE}"
+        BUCKET="${_MODEL_BUCKET}"
+        INSTANCE_NAME="${_INSTANCE_NAME}"
+        MACHINE_TYPE="${_MACHINE_TYPE}"
+
+        # Fail fast instead of creating a VM that cannot download its model.
+        gcloud storage ls "gs://$${BUCKET}/qwen2.5-14b-instruct/_READY" >/dev/null || {
+          echo "Model cache is not ready in gs://$${BUCKET}/qwen2.5-14b-instruct." >&2
+          echo "Run the GitHub Actions option 'cache_model_gcs' first." >&2
+          exit 1
+        }
+
+        # Generate the VM startup script in the Cloud Build workspace.
+        # Cloud Build's $$ escaping leaves shell variables for the VM to expand at boot.
+        cat > /workspace/startup.sh <<'STARTUP_EOF'
+        #!/bin/bash
+        set -euo pipefail
+        exec > >(tee -a /var/log/native-llm-startup.log) 2>&1
+
+        MODEL_BUCKET="${_MODEL_BUCKET}"
+        MODEL_PREFIX="qwen2.5-14b-instruct"
+        MODEL_DIR="/opt/models/qwen2.5-14b-instruct"
+
+        install_gcloud_cli() {
+          apt-get update
+          apt-get install -y ca-certificates curl gnupg
+          install -d -m 0755 /usr/share/keyrings
+          curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+            | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+          chmod a+r /usr/share/keyrings/cloud.google.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+            > /etc/apt/sources.list.d/google-cloud-sdk.list
+          apt-get update
+          apt-get install -y google-cloud-cli
+        }
+
+        if ! command -v gcloud >/dev/null 2>&1; then
+          install_gcloud_cli
+        fi
+
+        mkdir -p "$${MODEL_DIR}"
+        if ! test -s "$${MODEL_DIR}/qwen2.5-14b-instruct-q4_k_m-00001-of-00003.gguf" \
+          || ! test -s "$${MODEL_DIR}/qwen2.5-14b-instruct-q4_k_m-00002-of-00003.gguf" \
+          || ! test -s "$${MODEL_DIR}/qwen2.5-14b-instruct-q4_k_m-00003-of-00003.gguf"; then
+          gcloud storage cp "gs://$${MODEL_BUCKET}/$${MODEL_PREFIX}/qwen2.5-14b-instruct-q4_k_m-00001-of-00003.gguf" "$${MODEL_DIR}/"
+          gcloud storage cp "gs://$${MODEL_BUCKET}/$${MODEL_PREFIX}/qwen2.5-14b-instruct-q4_k_m-00002-of-00003.gguf" "$${MODEL_DIR}/"
+          gcloud storage cp "gs://$${MODEL_BUCKET}/$${MODEL_PREFIX}/qwen2.5-14b-instruct-q4_k_m-00003-of-00003.gguf" "$${MODEL_DIR}/"
+        fi
+
+        if ! command -v /usr/local/bin/llama-server >/dev/null 2>&1; then
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential cmake git libcurl4-openssl-dev
+          if [ ! -d /opt/llama.cpp/.git ]; then
+            git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /opt/llama.cpp
+          fi
+          cmake -S /opt/llama.cpp -B /opt/llama.cpp/build \
+            -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF
+          cmake --build /opt/llama.cpp/build --config Release -j 4
+          install -m 0755 /opt/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
+        fi
+
+        cat > /etc/systemd/system/llama-server.service <<'SERVICE_EOF'
+        [Unit]
+        Description=llama.cpp Qwen2.5 14B Instruct API server
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=simple
+        User=root
+        WorkingDirectory=/opt/models/qwen2.5-14b-instruct
+        ExecStart=/usr/local/bin/llama-server --model /opt/models/qwen2.5-14b-instruct/qwen2.5-14b-instruct-q4_k_m-00001-of-00003.gguf --host 0.0.0.0 --port 8000 --ctx-size 4096 --threads 8 --threads-batch 8
+        Restart=always
+        RestartSec=10
+        LimitNOFILE=65535
+
+        [Install]
+        WantedBy=multi-user.target
+        SERVICE_EOF
+
+        systemctl daemon-reload
+        systemctl enable llama-server.service
+        systemctl restart llama-server.service
+        STARTUP_EOF
+
+        chmod +x /workspace/startup.sh
+
+        if gcloud compute instances describe "$${INSTANCE_NAME}" --zone="$${ZONE}" >/dev/null 2>&1; then
+          echo "VM exists; updating startup metadata and ensuring it is stopped for machine-type changes."
+          STATUS="$(gcloud compute instances describe "$${INSTANCE_NAME}" --zone="$${ZONE}" --format='get(status)')"
+          if [ "$${STATUS}" = "RUNNING" ]; then
+            gcloud compute instances stop "$${INSTANCE_NAME}" --zone="$${ZONE}"
+          fi
+
+          CURRENT_MACHINE_TYPE="$(gcloud compute instances describe "$${INSTANCE_NAME}" --zone="$${ZONE}" --format='get(machineType)')"
+          if [[ "$${CURRENT_MACHINE_TYPE}" != */"$${MACHINE_TYPE}" ]]; then
+            gcloud compute instances set-machine-type "$${INSTANCE_NAME}" \
+              --zone="$${ZONE}" --machine-type="$${MACHINE_TYPE}"
+          fi
+
+          gcloud compute instances add-metadata "$${INSTANCE_NAME}" \
+            --zone="$${ZONE}" \
+            --metadata-from-file=startup-script=/workspace/startup.sh
+          gcloud compute instances start "$${INSTANCE_NAME}" --zone="$${ZONE}"
+        else
+          echo "Creating native Ubuntu CPU VM."
+          gcloud compute instances create "$${INSTANCE_NAME}" \
+            --zone="$${ZONE}" \
+            --machine-type="$${MACHINE_TYPE}" \
+            --boot-disk-size=100GB \
+            --boot-disk-type=pd-balanced \
+            --image-project=ubuntu-os-cloud \
+            --image-family=ubuntu-2404-lts-amd64 \
+            --metadata-from-file=startup-script=/workspace/startup.sh \
+            --scopes=https://www.googleapis.com/auth/cloud-platform \
+            --tags=allow-llm-api
+        fi
+
+        echo "VM deployment request completed. Startup script installs llama.cpp and starts llama-server."
+        echo "Check progress with: gcloud compute instances get-serial-port-output $${INSTANCE_NAME} --zone=$${ZONE}"
+
+substitutions:
+  _ZONE: 'us-central1-a'
+  _MODEL_BUCKET: 'lively-guard-512108-f4-llm-models'
+  _INSTANCE_NAME: 'local-llm-vm'
+  _MACHINE_TYPE: 'e2-standard-8'
+
+options:
+  machineType: 'E2_MEDIUM'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 7200s
