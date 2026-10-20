@@ -9,10 +9,12 @@ on:
         default: 'deploy_gce'
         type: choice
         options:
-          - build_image      # 1. Đóng gói custom image và đẩy lên Artifact Registry
-          - deploy_run       # 2. Triển khai lên Cloud Run (Dùng nếu có quota Cloud Run)
-          - deploy_gce       # 3. Triển khai lên Google Compute Engine (GPU L4 VM)
-          - warmup_run       # 4. Kích hoạt đánh thức hệ thống
+          - build_image       # 1. Đóng gói custom image và đẩy lên Artifact Registry
+          - deploy_run        # 2. Triển khai lên Cloud Run (Dùng nếu có quota Cloud Run)
+          - deploy_gce        # 3. Triển khai lên Google Compute Engine (GPU L4 VM)
+          - warmup_run        # 4. Kích hoạt đánh thức hệ thống
+          - cache_model_gcs   # 5. Tải Qwen GGUF lên GCS Bucket
+          - deploy_native_vm  # 6. Copy model từ GCS và chạy VM CPU
       zone:
         description: 'Google Cloud Zone (Để trống sẽ dùng mặc định: us-central1-a)'
         required: false
