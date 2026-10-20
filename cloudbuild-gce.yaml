@@ -5,9 +5,9 @@ steps:
     args:
       - '-c'
       - |
-        INSTANCE_NAME="$${_INSTANCE_NAME}"
-        ZONE="$${_ZONE}"
-        IMAGE_URI="us-central1-docker.pkg.dev/$PROJECT_ID/$${_REPO_NAME}/custom-llm-service:latest"
+        INSTANCE_NAME="${_INSTANCE_NAME}"
+        ZONE="${_ZONE}"
+        IMAGE_URI="us-central1-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/custom-llm-service:latest"
 
         echo "Kiểm tra xem VM $${INSTANCE_NAME} đã tồn tại chưa..."
         if gcloud compute instances describe "$${INSTANCE_NAME}" --zone="$${ZONE}" >/dev/null 2>&1; then
@@ -26,7 +26,7 @@ steps:
             --image-project=cos-cloud \
             --image-family=cos-113-lts \
             --container-image="$${IMAGE_URI}" \
-            --container-env=HF_TOKEN=$${_HF_TOKEN} \
+            --container-env=HF_TOKEN=${_HF_TOKEN} \
             --container-restart-policy=always \
             --tags=allow-llm-api \
             --scopes=https://www.googleapis.com/auth/cloud-platform
