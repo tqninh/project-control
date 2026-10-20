@@ -18,6 +18,11 @@ on:
         required: false
         default: 'us-central1-a'
         type: string
+      model_bucket:
+        description: 'Tên GCS bucket chứa model (tên bucket phải duy nhất toàn cầu)'
+        required: true
+        default: 'lively-guard-512108-f4-llm-models'
+        type: string
 
 jobs:
   run-cloud-build:
@@ -75,3 +80,41 @@ jobs:
         if: ${{ github.event.inputs.action_type == 'warmup_run' }}
         run: |
           gcloud builds submit --config cloudbuild-warmup.yaml .
+
+      # ==========================================================
+      # OPTION MỚI 1: TẢI MODEL TỪ HUGGING FACE LÊN GCS
+      # ==========================================================
+      - name: Cache Qwen GGUF model to GCS
+        if: ${{ github.event.inputs.action_type == 'cache_model_gcs' }}
+        env:
+          MODEL_BUCKET: ${{ github.event.inputs.model_bucket }}
+        run: |
+          set -euo pipefail
+          if [ -z "$MODEL_BUCKET" ]; then
+            echo "model_bucket không được để trống."
+            exit 1
+          fi
+          gcloud builds submit \
+            --config cloudbuild-model-bucket.yaml \
+            --substitutions=_MODEL_BUCKET="$MODEL_BUCKET" .
+
+      # ==========================================================
+      # OPTION MỚI 2: TẠO/CẬP NHẬT VM, COPY MODEL TỪ GCS VÀ START SERVICE
+      # ==========================================================
+      - name: Deploy native CPU VM from GCS model
+        if: ${{ github.event.inputs.action_type == 'deploy_native_vm' }}
+        env:
+          TARGET_ZONE: ${{ github.event.inputs.zone }}
+          MODEL_BUCKET: ${{ github.event.inputs.model_bucket }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TARGET_ZONE" ]; then
+            TARGET_ZONE="us-central1-a"
+          fi
+          if [ -z "$MODEL_BUCKET" ]; then
+            echo "model_bucket không được để trống."
+            exit 1
+          fi
+          gcloud builds submit \
+            --config cloudbuild-model-vm.yaml \
+            --substitutions=_ZONE="$TARGET_ZONE",_MODEL_BUCKET="$MODEL_BUCKET" .
