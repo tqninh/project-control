@@ -11,7 +11,6 @@ steps:
         echo "Kiểm tra xem VM $${INSTANCE_NAME} đã tồn tại chưa..."
         if gcloud compute instances describe "$${INSTANCE_NAME}" --zone="$${ZONE}" >/dev/null 2>&1; then
           echo "VM đã tồn tại. Đang tiến hành cập nhật Container Image trên VM..."
-          # Trên COS chuẩn mới, ta cập nhật container bằng cách ssh hoặc restart lại lệnh docker run qua metadata/SSH
           gcloud compute instances ssh "$${INSTANCE_NAME}" --zone="$${ZONE}" --command="
             sudo docker stop llm-service || true
             sudo docker rm llm-service || true
@@ -19,9 +18,8 @@ steps:
             sudo docker run -d --restart=always --name=llm-service --gpus all -p 8000:8000 -e HF_TOKEN=${_HF_TOKEN} $${IMAGE_URI}
           "
         else
-          echo "VM chưa tồn tại. Đang khởi tạo mới máy ảo kèm GPU L4 chuẩn cloud-init..."
+          echo "VM chưa tồn tại. Đang khởi tạo mới máy ảo kèm GPU T4 chuẩn cloud-init..."
           
-          # Tạo nội dung cloud-init script để tự động kéo image và chạy Docker khi máy ảo khởi động lần đầu
           CLOUD_INIT_CONFIG="#cloud-config
 
           runcmd:
@@ -40,6 +38,7 @@ steps:
             --metadata="user-data=$${CLOUD_INIT_CONFIG}" \
             --tags=allow-llm-api \
             --scopes=https://www.googleapis.com/auth/cloud-platform
+        fi
 
 substitutions:
   _INSTANCE_NAME: 'local-llm-vm'
