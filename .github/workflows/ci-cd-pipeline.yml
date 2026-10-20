@@ -48,13 +48,20 @@ jobs:
             --substitutions=_HF_TOKEN=${{ secrets.HF_TOKEN }} .
 
       # ==========================================================
-      # HÀNH ĐỘNG 3: DEPLOY COMPUTE ENGINE (GCE)
+      # HÀNH ĐỘNG 3: DEPLOY COMPUTE ENGINE (GCE) - HỖ TRỢ NHẬP ZONE
       # ==========================================================
       - name: Thực thi Cloud Build (Deploy Compute Engine GPU)
         if: ${{ github.event.inputs.action_type == 'deploy_gce' }}
         run: |
+          # Nếu người dùng để trống input zone, tự động fallback về us-central1-c
+          TARGET_ZONE="${{ github.event.inputs.zone }}"
+          if [ -z "$TARGET_ZONE" ]; then
+            TARGET_ZONE="us-central1-c"
+          fi
+          
+          echo "Đang triển khai GCE tại Zone: $TARGET_ZONE"
           gcloud builds submit --config cloudbuild-gce.yaml \
-            --substitutions=_HF_TOKEN=${{ secrets.HF_TOKEN }} .
+            --substitutions=_HF_TOKEN=${{ secrets.HF_TOKEN }},_ZONE="$TARGET_ZONE" .
 
       # ==========================================================
       # HÀNH ĐỘNG 4: WARM-UP HỆ THỐNG
